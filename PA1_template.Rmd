@@ -1,20 +1,135 @@
+---
+output: html_document
+---
 # Reproducible Research: Peer Assessment 1
 
-
 ## Loading and preprocessing the data
+We get the data from the activity.csv file, and then 
+remove the rows with NAs in them.
+```{r}
+activity <- read.csv("activity/activity.csv")
+# actClear is data.frame that is clear of NA's
+actClear <- activity[complete.cases(activity),]
 
-
+```
 
 ## What is mean total number of steps taken per day?
+We use the aggregate function to sum the number of steps
+for each day.
 
+```{r}
+## stepsByDay contains the sum of steps for each day.
+stepsByDay <- aggregate(actClear$steps, by=list(Date=actClear$date), sum)
+meanSteps <- mean(stepsByDay$x)
+medianSteps <- median(stepsByDay$x)
+```
 
+Mean number of steps per day = `r paste(round(meanSteps,2))`  
+Median number of steps per day = `r medianSteps`  
+Histogram of the total steps per day:
+
+```{r, fig.height=4, fig.width=6}
+hist(stepsByDay$x, breaks=20, col="red", xlab="Steps Per Day", main="Histogram of Steps Per Day")
+abline(v = meanSteps, col="gold", lwd=2)
+text(x = 15000, y = 10, paste("Mean=", round(meanSteps,2)), cex=.75, col="gold")
+```
 
 ## What is the average daily activity pattern?
+We use the aggregate function to find the mean number of steps for each 5-minute interval over the course of the days, and then find the period with the maximum mean number of steps:
+```{r}
+## meanStepsByPeriod contains the mean number of steps for each period in the column x.
+meanStepsByPeriod <- aggregate(actClear$steps, list(interval=actClear$interval), mean)
+## mx is the maximum mean number of steps per period
+mx <- which.max(meanStepsByPeriod$x)
+maxPeriod <- meanStepsByPeriod[mx,]
 
+```
+Now we plot the data by interval:
+```{r, fig.height=4, fig.width=8}
+plot(meanStepsByPeriod$interval, meanStepsByPeriod$x, main="Average Daily Activity", xlab="5 Minute Interval", ylab="Mean Number of Steps", col="red", type="l")
 
+text(1200, 206, paste("Max=(", maxPeriod$interval, ",", round(maxPeriod$x), ")"), cex=.75, col="gold")
+```   
+  
+The five minute interval `r maxPeriod$interval` has the highest average number of steps over all the days of any 5 minute period in the data set at `r maxPeriod$x`.
 
 ## Imputing missing values
+```{r}
+naRows <- which(is.na(activity$steps))
 
+```
+The total number of rows with NAs in them is `r length(naRows)`.
+<p>
+We will replace the NAs in the original dataset with the mean number of steps for that period over all the days (that are not NA). 
+
+```{r}
+## convertedActivity is the data.frame with the NA values in activity replaced by the mean for the period
+convertedActivity <- data.frame(activity)
+
+for(i in naRows) {
+   if(is.na(convertedActivity[i,]$steps)) {
+       convertedActivity[i,]$steps <- 
+           meanStepsByPeriod[meanStepsByPeriod$interval == convertedActivity[i,]$interval,]$x
+   }
+}
+
+## Calculate the steps by day for the converted data set.
+cStepsByDay <- aggregate(convertedActivity$steps, by=list(Date=convertedActivity$date), sum)
+
+cMeanSteps <- mean(cStepsByDay$x)
+cMedianSteps <- median(cStepsByDay$x)
+```
+For the converted data set:  
+Mean Steps per day = `r paste(round(cMeanSteps,2))`.  
+Median Steps per day = `r paste(round(cMedianSteps,2))`.  
+So the mean has stayed the same, while the median has increased slightly to have the same value as the mean. 
+
+Histogram of converted activity data set:
+```{r, fig.height=4, fig.width=6}
+hist(cStepsByDay$x, breaks=20, col="red", xlab="Steps Per Day",   main="Histogram of Converted Steps Per Day")
+
+abline(v = cMeanSteps, col="gold", lwd=2)
+text(x = 15000, y = 10, paste("Mean=", round(cMeanSteps,2)), cex=.75, col="gold")
+```
+  
+We see a large increase in the rectangle containing the mean in this histogram. In the end if we merge the steps by Day for the originalactivity data set and the converted activity data set:
+```{r}
+## joined contains the merged values of the converted steps by day and the original steps by day.
+joined <- merge(cStepsByDay, stepsByDay, by.x="Date", by.y="Date", all.x=TRUE)
+## rename columns in joined
+names(joined) = c("Date", "ConvertedTotalSteps", "UnconvertedTotalSteps")
+## find the rows with NAs in the Unconverted data
+w <- which(is.na(joined$UnconvertedTotalSteps))
+```
+We find the following dates correspond to those with NAs in them in the original data set;
+```{r}
+joined[w,]
+```
+and we find no change in the other days:
+```{r}
+joined[-w,]$ConvertedTotalSteps - joined[-w,]$UnconvertedTotalSteps
+```
+Thus the impact of replacing the NAs was to replace the total for 8 days where no data was taken with the value of the mean, `r paste(round(joined[w[1],2],2))`.
 
 
 ## Are there differences in activity patterns between weekdays and weekends?
+Add a new column to our converted data set indicating whether the day is a weekday or weekend:
+```{r}
+## find the day for each date in covertedActivity
+day <- weekdays(as.Date(convertedActivity$date))
+## add a column dayType to convertedActivity as weekend or weekday
+convertedActivity$dayType <- ifelse(day == "Sunday" | day == "Saturday",  "weekend", "weekday")
+## change column to a factor variable
+convertedActivity$dayType <- as.factor(convertedActivity$dayType)
+```
+Use the aggregate function to find the mean of the number of steps for each 5-minute period and by the day type:
+```{r}
+## meanStepsByPeriodType, contains the mean by interval and dayType.
+meanStepsByPeriodType <- aggregate(convertedActivity$steps,list(interval=convertedActivity$interval, dayType=convertedActivity$dayType), mean)
+```
+Now plot the data:
+```{r, fig.height=4, fit.width=8 }
+library(lattice)
+xyplot(x ~ interval|dayType,data=meanStepsByPeriodType, layout=c(1,2), type="l",  ylab="Mean Number of Steps", xlab="Interval")
+```
+
